@@ -1,0 +1,115 @@
+
+#1. Use same train and test sample from logistic regression (assignment 4.1).
+```{r}
+df <- read.csv("/Users/azizhazeinita/Documents/S2 Uchicago/MScA/Winter 2022 - 2nd Quarter/Data Mining Principles/Assignment 4 - Data Mining Principles/Diabetese Dataset Files/diabetes_data.csv")
+df_1 <- read.csv("/Users/azizhazeinita/Documents/S2 Uchicago/MScA/Winter 2022 - 2nd Quarter/Data Mining Principles/Assignment 4 - Data Mining Principles/Diabetese Dataset Files/diabetes_data.csv")
+colSums(is.na(df))
+df <- na.omit(df)
+colSums(is.na(df_1))
+df <- na.omit(df_1)
+
+df_readmitted <- df_1['readmitted']  
+df_readmitted['readmitted'][df_readmitted['readmitted'] == '<30'] <- 'Yes'
+df_readmitted['readmitted'][df_readmitted['readmitted'] == '>30'] <- 'Yes'
+
+# Changing diag_1, diag_2, diag_3 type into float
+df_diag <- df_1[c('diag_1','diag_2','diag_3')]
+str(df_diag)
+sum(is.na(df_diag))
+df_diag$diag_1 <- gsub("[^0-9.-]", "", df_diag$diag_1)
+df_diag$diag_1 <- as.double(df_diag$diag_1)
+df_diag$diag_2 <- gsub("[^0-9.-]", "", df_diag$diag_2)
+df_diag$diag_2 <- as.double(df_diag$diag_2)
+df_diag$diag_3 <- gsub("[^0-9.-]", "", df_diag$diag_3)
+df_diag$diag_3 <- as.double(df_diag$diag_3)
+
+df[c('readmitted','diag_1','diag_2','diag_3')] <- NULL
+
+library(caret)
+
+dummy <- dummyVars(" ~ .", data=df) #define one-hot encoding function
+final_df <- data.frame(predict(dummy, newdata=df)) #perform one-hot encoding on data frame
+
+unique(df_readmitted)
+df_readmitted$readmitted = factor(df_readmitted$readmitted, levels = c('Yes', 'NO'),labels = c(1, 0))
+
+final_df['readmitted'] <- df_readmitted
+final_df['diag_1'] <- df_diag$diag_1
+final_df['diag_2'] <- df_diag$diag_2
+final_df['diag_3'] <- df_diag$diag_3
+
+str(final_df)
+
+smp_size <- floor(0.7 * nrow(final_df)) #70% data train
+set.seed(123) # set the seed to make your partition reproducible
+train_ind <- sample(seq_len(nrow(final_df)), size = smp_size)
+
+train <- final_df[train_ind, ]
+test <- final_df[-train_ind, ]
+str(train)
+```
+
+# 2. Build a full classification tree using the train data and all variables.
+```{r}
+library(rpart)
+
+# 2.1 Build the model with criteria: minimum node size = 30, Use 10-fold cross validation (Xval = 10), CP should = 0 
+x=rpart(readmitted~., data=train,control=rpart.control(cp=0,minsplit=30,xval=10))
+```
+
+# 2.2. View results for different tree lengths
+```{r}
+printcp(x)
+```
+
+# 2.3. Plot complexity parameter
+```{r}
+plotcp (x)
+```
+
+# 2.4. Find lowest xerror value and build a pruned tree using that cp value as an argument in the r part formula.
+# Find lowest xerror value and cp
+```{r}
+min_xerror <- which.min(x$cptable[,"xerror"])
+cp <- x$cptable[min_xerror, "CP"]
+print(cp)
+```
+
+#build a pruned tree using that cp value as an argument
+```{r}
+x_pruned=rpart(readmitted~., data=train,control=rpart.control(cp=0.0003349327,minsplit=30,xval=10))
+printcp(x_pruned)
+```
+
+# 2.5. Generate confusion matrix for pruned tree
+```{r}
+Prediction_Model<-predict(x_pruned, data=train, type="class")
+confusionMatrix(Prediction_Model, train$readmitted)
+round(prop.table(table(Prediction_Model,train$readmitted),1),2)
+#sapply(Prediction_Model, levels)
+```
+
+# 2.6. Point out significant interactions you think you see
+#The numbers of TP and TN are almost the same, the numbers of FP and FN are almost half of numbers of TP and TN
+```{r}
+summary(x_pruned)
+plot(x_pruned, uniform = TRUE, compress = TRUE, branch = 0)
+text(x_pruned, use.n = TRUE, cex = 0.6, xpd = NA)
+#From the plot, we can see that the tree is deep enough, the criterias to deciding readmitted status are detail, which is good.
+```
+
+#3. Predict values for test data and compare confusion matrix with train. Type = “class” (R), and predict (Python) Are results stable?
+```{r}
+x_test=rpart(readmitted~., data=test,control=rpart.control(cp=0.0003349327,minsplit=30,xval=10))
+Prediction_Model_test<-predict(x_pruned, data=test, type="class")
+confusionMatrix(Prediction_Model_test, train$readmitted)
+round(prop.table(table(Prediction_Model_test,train$readmitted),1),2)
+
+#The results of confusion matrix between train and test dataset are the same (stable)
+```
+
+# 4. Compare Test  results for logistic regression and classification tree by comparing the two confusion matrices.
+#Answer: Proportion of TP and TN in classification tree is higher (> 50%) compared to logistic regression, and the pattern of interactions from confusion matrix in classification tree is easier to find.
+
+
+
